@@ -3,6 +3,8 @@ from selenium.webdriver.chrome.options import Options
 import re
 import db_tool
 from tqdm import tqdm
+import time
+import selenium.common.exceptions
 
 
 class Spider(object):
@@ -15,7 +17,7 @@ class Spider(object):
         main_page = 'http://muchong.com/bbs/'
         self.__driver.get(url=main_page)
         if account == 1:
-            self.__driver.add_cookie({'name': '_discuz_uid', 'value': '24725517'})
+            self.__driver.add_cookie({'name': '_discuz_uid', 'value': '6111795'})
         else:
             self.__driver.add_cookie({'name': '_discuz_uid', 'value': '24724882'})
         self.__driver.add_cookie({'name': '_discuz_pw', 'value': '789cb43e40ab0032'})
@@ -69,7 +71,28 @@ class Spider(object):
                 topic_dicts.append(topic_dict)
             topic_session.insert_many(topic_dicts)
 
-    def start_detail_page_spider(self):
-        detail_session = self.__mongo.get_database('xiaomuchong_db').get_collection('detail')
+    def start_detail_page_spider(self, start_index, batch_size):
         topic_session = self.__mongo.get_database('xiaomuchong_db').get_collection('topic')
-
+        topic_dicts = list(topic_session.find())
+        for i in tqdm(range(start_index, start_index + batch_size, 1)):
+            topic_dict = topic_dicts[i]
+            topic_id = topic_dict['topic_id']
+            detail_first_page_url = 'http://muchong.com/t-{0}-1'.format(topic_id)
+            self.__driver.get(detail_first_page_url)
+            with open('E:/Xiaomuchong/DetailPages/{0}-1.html'.format(topic_id), 'w+', encoding='utf-8') as first_write:
+                first_write.write(self.__driver.page_source)
+            try:
+                page_count_element = self.__driver.find_element_by_class_name(name='smalltxt')
+            except selenium.common.exceptions.NoSuchElementException:
+                print(detail_first_page_url)
+                continue
+            page_count = page_count_element.text.split(' ')[1]
+            all_page_count = int(page_count.split('/')[1])
+            for next_page in range(2, all_page_count + 1, 1):
+                page_url = 'http://muchong.com/t-{0}-{1}'.format(topic_id, str(next_page))
+                self.__driver.get(page_url)
+                with open('E:/Xiaomuchong/DetailPages/{0}-{1}.html'.format(topic_id, str(next_page)), 'w+', encoding='utf-8') as f:
+                    f.write(self.__driver.page_source)
+                time.sleep(1)
+            topic_session.delete_one({'topic_id': topic_id})
+            time.sleep(1)

@@ -1,3 +1,4 @@
 import spider_main
 
-spider_main.start_topic_page_spider(account=1, start_index=181)
+spider = spider_main.Spider(account=1)
+spider.start_detail_page_spider(start_index=1, batch_size=50)
