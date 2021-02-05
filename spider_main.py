@@ -8,7 +8,7 @@ import selenium.common.exceptions
 
 
 class Spider(object):
-    def __init__(self, account):
+    def __init__(self, account: int):
         self.__mongo = db_tool.create_mongo_session()
         chrome_options = Options()
         chrome_options.add_argument('--headless')
@@ -16,10 +16,8 @@ class Spider(object):
         self.__driver = webdriver.Chrome(executable_path='webdriver/chromedriver.exe', options=chrome_options)
         main_page = 'http://muchong.com/bbs/'
         self.__driver.get(url=main_page)
-        if account == 1:
-            self.__driver.add_cookie({'name': '_discuz_uid', 'value': '6111795'})
-        else:
-            self.__driver.add_cookie({'name': '_discuz_uid', 'value': '24724882'})
+        accounts = ['25073725', '25072651', '24723952', '24724882']
+        self.__driver.add_cookie({'name': '_discuz_uid', 'value': accounts[account]})
         self.__driver.add_cookie({'name': '_discuz_pw', 'value': '789cb43e40ab0032'})
 
     def start_topic_page_spider(self, start_index):
@@ -96,3 +94,28 @@ class Spider(object):
                 time.sleep(1)
             topic_session.delete_one({'topic_id': topic_id})
             time.sleep(1)
+
+    def init_user_page_spider(self):
+        detail_session = self.__mongo.get_database('xiaomuchong_db').get_collection('detail')
+        poster_session = self.__mongo.get_database('xiaomuchong_db').get_collection('poster')
+        detail_dicts = list(detail_session.find())
+        poster_uid_list = list(map(lambda o: o['poster_uid'], detail_dicts))
+        poster_uid_set = list(set(poster_uid_list))
+        for poster_uid in tqdm(poster_uid_set):
+            detail_dict = list(detail_session.find({'poster_uid': poster_uid}))[0]
+            user_dict = dict(uid=poster_uid, major=detail_dict['poster_major'], gender=detail_dict['poster_gender'])
+            poster_session.insert_one(user_dict)
+
+    def start_user_page_spider(self, batch_size):
+        poster_session = self.__mongo.get_database('xiaomuchong_db').get_collection('poster')
+        poster_dicts = list(poster_session.find().limit(batch_size))
+        for poster_dict in tqdm(poster_dicts):
+            uid = poster_dict['uid']
+            if poster_dict['major'] != '未知' or poster_dict['gender'] != '未知':
+                continue
+            user_page_url = 'http://muchong.com/bbs/space.php?uid={0}'.format(str(uid))
+            self.__driver.get(user_page_url)
+            with open('E:/Xiaomuchong/UserPages/{0}.html'.format(str(uid)), 'w+', encoding='utf-8') as f:
+                f.write(self.__driver.page_source)
+            poster_session.delete_one({'uid': uid})
+        time.sleep(1)
